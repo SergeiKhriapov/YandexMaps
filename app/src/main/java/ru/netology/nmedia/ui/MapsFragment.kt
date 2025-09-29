@@ -3,15 +3,16 @@ package ru.netology.nmedia.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.content.pm.PackageManager
-import android.graphics.Bitmap
-import android.graphics.Canvas
-import android.graphics.drawable.Drawable
 import android.os.Bundle
 import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
+import android.widget.EditText
+import android.widget.ImageView
+import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.appcompat.app.AlertDialog
 import androidx.core.content.ContextCompat
 import androidx.fragment.app.Fragment
 import com.yandex.mapkit.Animation
@@ -19,25 +20,28 @@ import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.layers.ObjectEvent
 import com.yandex.mapkit.map.CameraPosition
+import com.yandex.mapkit.map.MapObjectCollection
 import com.yandex.mapkit.mapview.MapView
 import com.yandex.mapkit.user_location.UserLocationLayer
 import com.yandex.mapkit.user_location.UserLocationObjectListener
 import com.yandex.mapkit.user_location.UserLocationView
 import com.yandex.runtime.image.ImageProvider
 import ru.netology.nmedia.R
-import androidx.core.graphics.createBitmap
+import ru.netology.nmedia.model.MarkerPoint
+import ru.netology.nmedia.storage.MarkerStorage
+import toBitmap
 
 class MapsFragment : Fragment(), UserLocationObjectListener {
 
     private lateinit var mapView: MapView
     private var userLocationLayer: UserLocationLayer? = null
+    private var markers = mutableListOf<MarkerPoint>()
+    private lateinit var markersLayer: MapObjectCollection
 
-    // Лаунчер для запроса разрешения
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
             if (isGranted) enableUserLocation()
-            else Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT)
-                .show()
+            else Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT).show()
         }
 
     override fun onCreateView(
@@ -48,52 +52,127 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         mapView = view.findViewById(R.id.mapView)
 
         // Проверка разрешений на геопозицию
         when {
-            ContextCompat.checkSelfPermission(
-                requireContext(),
-                Manifest.permission.ACCESS_FINE_LOCATION
-            )
-                    == PackageManager.PERMISSION_GRANTED -> enableUserLocation()
-
+            ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) ==
+                    PackageManager.PERMISSION_GRANTED -> enableUserLocation()
             shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) ->
-                Toast.makeText(requireContext(), "Location permission needed", Toast.LENGTH_SHORT)
-                    .show()
-
+                Toast.makeText(requireContext(), "Location permission needed", Toast.LENGTH_SHORT).show()
             else -> requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
-        // Координаты маркера
-        val target = Point(55.751999, 37.617734)
+        // Загружаем сохраненные маркеры
+        markers = MarkerStorage.loadMarkers(requireContext())
 
-        // Конвертация вектора в Bitmap
-        val drawable = ContextCompat.getDrawable(requireContext(), R.drawable.ic_netology_48dp)!!
-        val bitmap = drawable.toBitmap()
+        // Создаем отдельный слой для маркеров
+        markersLayer = mapView.map.mapObjects.addCollection()
+        refreshMarkersOnMap()
 
-        // Добавление маркера на карту
-        val placemark = mapView.map.mapObjects.addPlacemark(target)
-        placemark.setIcon(ImageProvider.fromBitmap(bitmap))
-        placemark.userData = "The Moscow Kremlin"
+        // Слушатель кликов на карту
+        mapView.map.addInputListener(object : com.yandex.mapkit.map.InputListener {
+            override fun onMapTap(map: com.yandex.mapkit.map.Map, point: Point) {
+                showAddMarkerDialog(point)
+            }
 
-        // Клик по маркеру
-        placemark.addTapListener { _, _ ->
-            Toast.makeText(requireContext(), placemark.userData as String, Toast.LENGTH_LONG).show()
-            true
-        }
+            override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {
+                // Можно оставить пустым или использовать для других целей
+            }
+        })
 
-        // Камера с анимацией
+        // Камера на первый маркер или центр Москвы
+        val initialPoint = markers.firstOrNull()
+            ?.let { Point(it.latitude, it.longitude) }
+            ?: Point(55.751999, 37.617734)
+
         mapView.post {
             mapView.map.move(
-                CameraPosition(target, 15f, 0f, 0f),
+                CameraPosition(initialPoint, 15f, 0f, 0f),
                 Animation(Animation.Type.SMOOTH, 1f),
                 null
             )
         }
+
+        // Включаем жесты масштабирования
+        mapView.map.isZoomGesturesEnabled = true
+        mapView.map.isScrollGesturesEnabled = true
     }
 
+    // Диалог для добавления маркера
+    private fun showAddMarkerDialog(point: Point) {
+        val editText = EditText(requireContext())
+        AlertDialog.Builder(requireContext())
+            .setTitle("Название точки")
+            .setView(editText)
+            .setPositiveButton("Добавить") { _, _ ->
+                val name = editText.text.toString().trim()
+                if (name.isNotEmpty()) addMarker(point, name)
+                else Toast.makeText(requireContext(), "Название не может быть пустым", Toast.LENGTH_SHORT).show()
+            }
+            .setNegativeButton("Отмена", null)
+            .show()
+    }
+
+    // Диалог редактирования / удаления маркера
+    private fun showEditMarkerDialog(marker: MarkerPoint) {
+        val editText = EditText(requireContext())
+        editText.setText(marker.name)
+        AlertDialog.Builder(requireContext())
+            .setTitle("Редактировать точку")
+            .setView(editText)
+            .setPositiveButton("Сохранить") { _, _ ->
+                val newName = editText.text.toString().trim()
+                if (newName.isNotEmpty()) {
+                    marker.name = newName
+                    MarkerStorage.saveMarkers(requireContext(), markers)
+                    refreshMarkersOnMap()
+                } else {
+                    Toast.makeText(requireContext(), "Название не может быть пустым", Toast.LENGTH_SHORT).show()
+                }
+            }
+            .setNegativeButton("Удалить") { _, _ ->
+                markers.remove(marker)
+                MarkerStorage.saveMarkers(requireContext(), markers)
+                refreshMarkersOnMap()
+            }
+            .setNeutralButton("Отмена", null)
+            .show()
+    }
+
+    // Добавление маркера в список и на карту
+    private fun addMarker(point: Point, name: String) {
+        val id = System.currentTimeMillis()
+        val marker = MarkerPoint(id, name, point.latitude, point.longitude)
+        markers.add(marker)
+        MarkerStorage.saveMarkers(requireContext(), markers)
+        refreshMarkersOnMap()
+    }
+
+    // Перерисовка всех маркеров на карте
+    private fun refreshMarkersOnMap() {
+        markersLayer.clear() // очищаем только маркеры
+
+        val inflater = LayoutInflater.from(requireContext())
+
+        markers.forEach { marker ->
+            val markerView = inflater.inflate(R.layout.item_marker, null)
+            markerView.findViewById<TextView>(R.id.markerText).text = marker.name
+            val icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_netology_48dp)
+            markerView.findViewById<ImageView>(R.id.markerIcon).setImageDrawable(icon)
+
+            val bitmap = markerView.toBitmap()
+            val placemark = markersLayer.addPlacemark(Point(marker.latitude, marker.longitude))
+            placemark.setIcon(ImageProvider.fromBitmap(bitmap))
+            placemark.userData = marker
+            placemark.addTapListener { _, _ ->
+                showEditMarkerDialog(marker)
+                true
+            }
+        }
+    }
+
+    // Включение слоя текущей позиции пользователя
     @SuppressLint("MissingPermission")
     private fun enableUserLocation() {
         val mapKit = MapKitFactory.getInstance()
@@ -106,16 +185,10 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     // UserLocationObjectListener
     override fun onObjectAdded(userLocationView: UserLocationView) {
         userLocationView.arrow.setIcon(
-            ImageProvider.fromResource(
-                requireContext(),
-                R.drawable.ic_netology_48dp
-            )
+            ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp)
         )
         userLocationView.pin.setIcon(
-            ImageProvider.fromResource(
-                requireContext(),
-                R.drawable.ic_netology_48dp
-            )
+            ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp)
         )
     }
 
@@ -132,15 +205,5 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         mapView.onStop()
         MapKitFactory.getInstance().onStop()
         super.onStop()
-    }
-
-    // Вектор -> Bitmap
-    private fun Drawable.toBitmap(): Bitmap {
-        val bitmap = createBitmap(intrinsicWidth.takeIf { it > 0 } ?: 48,
-            intrinsicHeight.takeIf { it > 0 } ?: 48)
-        val canvas = Canvas(bitmap)
-        setBounds(0, 0, canvas.width, canvas.height)
-        draw(canvas)
-        return bitmap
     }
 }

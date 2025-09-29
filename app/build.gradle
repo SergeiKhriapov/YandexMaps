@@ -71,6 +71,11 @@ dependencies {
     implementation 'com.yandex.android:maps.mobile:4.22.0-full'
 
 
+    //Gson
+    implementation 'com.google.code.gson:gson:2.10.1'
+
+
+
     // Для десугаринга JDK
     coreLibraryDesugaring "com.android.tools:desugar_jdk_libs:$core_desugaring_version"
 }
