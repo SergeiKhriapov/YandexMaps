@@ -1,0 +1,22 @@
+# IntelliJ/Android Studio
+*.iml
+.gradle
+/.idea/caches
+/.idea/libraries
+/.idea/modules.xml
+/.idea/workspace.xml
+/.idea/navEditor.xml
+/.idea/assetWizardSettings.xml
+
+# Mac
+.DS_Store
+
+# Build
+/build
+/captures
+.externalNativeBuild
+.cxx
+
+# Local properties
+local.properties
+maps.properties
