@@ -8,6 +8,7 @@ import android.view.LayoutInflater
 import android.view.View
 import android.view.ViewGroup
 import android.widget.EditText
+import android.widget.ImageButton
 import android.widget.ImageView
 import android.widget.TextView
 import android.widget.Toast
@@ -54,6 +55,28 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         super.onViewCreated(view, savedInstanceState)
         mapView = view.findViewById(R.id.mapView)
 
+        // Плавное масштабирование через кнопки
+        val zoomInButton: ImageButton = view.findViewById(R.id.zoomInButton)
+        val zoomOutButton: ImageButton = view.findViewById(R.id.zoomOutButton)
+
+        zoomInButton.setOnClickListener {
+            val currentZoom = mapView.map.cameraPosition.zoom
+            mapView.map.move(
+                CameraPosition(mapView.map.cameraPosition.target, currentZoom + 1, 0f, 0f),
+                Animation(Animation.Type.SMOOTH, 0.5f),
+                null
+            )
+        }
+
+        zoomOutButton.setOnClickListener {
+            val currentZoom = mapView.map.cameraPosition.zoom
+            mapView.map.move(
+                CameraPosition(mapView.map.cameraPosition.target, currentZoom - 1, 0f, 0f),
+                Animation(Animation.Type.SMOOTH, 0.5f),
+                null
+            )
+        }
+
         // Проверка разрешений на геопозицию
         when {
             ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) ==
@@ -63,10 +86,8 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
             else -> requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
 
-        // Загружаем сохраненные маркеры
+        // Загружаем маркеры
         markers = MarkerStorage.loadMarkers(requireContext())
-
-        // Создаем отдельный слой для маркеров
         markersLayer = mapView.map.mapObjects.addCollection()
         refreshMarkersOnMap()
 
@@ -76,9 +97,7 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
                 showAddMarkerDialog(point)
             }
 
-            override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {
-                // Можно оставить пустым или использовать для других целей
-            }
+            override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {}
         })
 
         // Камера на первый маркер или центр Москвы
@@ -94,12 +113,11 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
             )
         }
 
-        // Включаем жесты масштабирования
+        // жесты
         mapView.map.isZoomGesturesEnabled = true
         mapView.map.isScrollGesturesEnabled = true
     }
 
-    // Диалог для добавления маркера
     private fun showAddMarkerDialog(point: Point) {
         val editText = EditText(requireContext())
         AlertDialog.Builder(requireContext())
@@ -114,7 +132,6 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
             .show()
     }
 
-    // Диалог редактирования / удаления маркера
     private fun showEditMarkerDialog(marker: MarkerPoint) {
         val editText = EditText(requireContext())
         editText.setText(marker.name)
@@ -140,7 +157,6 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
             .show()
     }
 
-    // Добавление маркера в список и на карту
     private fun addMarker(point: Point, name: String) {
         val id = System.currentTimeMillis()
         val marker = MarkerPoint(id, name, point.latitude, point.longitude)
@@ -149,10 +165,8 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         refreshMarkersOnMap()
     }
 
-    // Перерисовка всех маркеров на карте
     private fun refreshMarkersOnMap() {
-        markersLayer.clear() // очищаем только маркеры
-
+        markersLayer.clear()
         val inflater = LayoutInflater.from(requireContext())
 
         markers.forEach { marker ->
@@ -172,7 +186,6 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         }
     }
 
-    // Включение слоя текущей позиции пользователя
     @SuppressLint("MissingPermission")
     private fun enableUserLocation() {
         val mapKit = MapKitFactory.getInstance()
@@ -182,7 +195,6 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         userLocationLayer?.setObjectListener(this)
     }
 
-    // UserLocationObjectListener
     override fun onObjectAdded(userLocationView: UserLocationView) {
         userLocationView.arrow.setIcon(
             ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp)
