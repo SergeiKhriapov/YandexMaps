@@ -55,29 +55,40 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         super.onViewCreated(view, savedInstanceState)
         mapView = view.findViewById(R.id.mapView)
 
-        // Плавное масштабирование через кнопки
         val zoomInButton: ImageButton = view.findViewById(R.id.zoomInButton)
         val zoomOutButton: ImageButton = view.findViewById(R.id.zoomOutButton)
+        val myLocationButton: ImageButton = view.findViewById(R.id.myLocationButton)
 
-        zoomInButton.setOnClickListener {
-            val currentZoom = mapView.map.cameraPosition.zoom
-            mapView.map.move(
-                CameraPosition(mapView.map.cameraPosition.target, currentZoom + 1, 0f, 0f),
-                Animation(Animation.Type.SMOOTH, 0.5f),
-                null
-            )
+        zoomInButton.setOnClickListener { changeZoom(1f) }
+        zoomOutButton.setOnClickListener { changeZoom(-1f) }
+
+        myLocationButton.setOnClickListener {
+            userLocationLayer?.cameraPosition()?.target?.let { location ->
+                mapView.map.move(
+                    CameraPosition(location, 15f, 0f, 0f),
+                    Animation(Animation.Type.SMOOTH, 1f),
+                    null
+                )
+            } ?: Toast.makeText(requireContext(), "User location not available", Toast.LENGTH_SHORT).show()
         }
 
-        zoomOutButton.setOnClickListener {
-            val currentZoom = mapView.map.cameraPosition.zoom
-            mapView.map.move(
-                CameraPosition(mapView.map.cameraPosition.target, currentZoom - 1, 0f, 0f),
-                Animation(Animation.Type.SMOOTH, 0.5f),
-                null
-            )
-        }
+        checkLocationPermission()
+        setupMarkers()
+        enableGestures()
+        moveCameraToInitialPoint()
+        setupMapTapListener()
+    }
 
-        // Проверка разрешений на геопозицию
+    private fun changeZoom(delta: Float) {
+        val currentZoom = mapView.map.cameraPosition.zoom
+        mapView.map.move(
+            CameraPosition(mapView.map.cameraPosition.target, currentZoom + delta, 0f, 0f),
+            Animation(Animation.Type.SMOOTH, 0.5f),
+            null
+        )
+    }
+
+    private fun checkLocationPermission() {
         when {
             ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) ==
                     PackageManager.PERMISSION_GRANTED -> enableUserLocation()
@@ -85,26 +96,22 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
                 Toast.makeText(requireContext(), "Location permission needed", Toast.LENGTH_SHORT).show()
             else -> requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
         }
+    }
 
-        // Загружаем маркеры
+    private fun setupMarkers() {
         markers = MarkerStorage.loadMarkers(requireContext())
         markersLayer = mapView.map.mapObjects.addCollection()
         refreshMarkersOnMap()
+    }
 
-        // Слушатель кликов на карту
-        mapView.map.addInputListener(object : com.yandex.mapkit.map.InputListener {
-            override fun onMapTap(map: com.yandex.mapkit.map.Map, point: Point) {
-                showAddMarkerDialog(point)
-            }
+    private fun enableGestures() {
+        mapView.map.isZoomGesturesEnabled = true
+        mapView.map.isScrollGesturesEnabled = true
+    }
 
-            override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {}
-        })
-
-        // Камера на первый маркер или центр Москвы
-        val initialPoint = markers.firstOrNull()
-            ?.let { Point(it.latitude, it.longitude) }
+    private fun moveCameraToInitialPoint() {
+        val initialPoint = markers.firstOrNull()?.let { Point(it.latitude, it.longitude) }
             ?: Point(55.751999, 37.617734)
-
         mapView.post {
             mapView.map.move(
                 CameraPosition(initialPoint, 15f, 0f, 0f),
@@ -112,10 +119,16 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
                 null
             )
         }
+    }
 
-        // жесты
-        mapView.map.isZoomGesturesEnabled = true
-        mapView.map.isScrollGesturesEnabled = true
+    private fun setupMapTapListener() {
+        mapView.map.addInputListener(object : com.yandex.mapkit.map.InputListener {
+            override fun onMapTap(map: com.yandex.mapkit.map.Map, point: Point) {
+                showAddMarkerDialog(point)
+            }
+
+            override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {}
+        })
     }
 
     private fun showAddMarkerDialog(point: Point) {
@@ -158,8 +171,7 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     }
 
     private fun addMarker(point: Point, name: String) {
-        val id = System.currentTimeMillis()
-        val marker = MarkerPoint(id, name, point.latitude, point.longitude)
+        val marker = MarkerPoint(System.currentTimeMillis(), name, point.latitude, point.longitude)
         markers.add(marker)
         MarkerStorage.saveMarkers(requireContext(), markers)
         refreshMarkersOnMap()
@@ -172,8 +184,8 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         markers.forEach { marker ->
             val markerView = inflater.inflate(R.layout.item_marker, null)
             markerView.findViewById<TextView>(R.id.markerText).text = marker.name
-            val icon = ContextCompat.getDrawable(requireContext(), R.drawable.ic_netology_48dp)
-            markerView.findViewById<ImageView>(R.id.markerIcon).setImageDrawable(icon)
+            markerView.findViewById<ImageView>(R.id.markerIcon)
+                .setImageDrawable(ContextCompat.getDrawable(requireContext(), R.drawable.ic_netology_48dp))
 
             val bitmap = markerView.toBitmap()
             val placemark = markersLayer.addPlacemark(Point(marker.latitude, marker.longitude))
@@ -189,19 +201,17 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     @SuppressLint("MissingPermission")
     private fun enableUserLocation() {
         val mapKit = MapKitFactory.getInstance()
-        userLocationLayer = mapKit.createUserLocationLayer(mapView.mapWindow)
-        userLocationLayer?.isVisible = true
-        userLocationLayer?.setHeadingModeActive(true)
-        userLocationLayer?.setObjectListener(this)
+        if (userLocationLayer == null) {
+            userLocationLayer = mapKit.createUserLocationLayer(mapView.mapWindow)
+            userLocationLayer?.isVisible = true
+            userLocationLayer?.setHeadingModeActive(true)
+            userLocationLayer?.setObjectListener(this)
+        }
     }
 
     override fun onObjectAdded(userLocationView: UserLocationView) {
-        userLocationView.arrow.setIcon(
-            ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp)
-        )
-        userLocationView.pin.setIcon(
-            ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp)
-        )
+        userLocationView.arrow.setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp))
+        userLocationView.pin.setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp))
     }
 
     override fun onObjectRemoved(userLocationView: UserLocationView) {}

@@ -11,28 +11,38 @@
     <!-- Контейнер для кнопок масштабирования -->
     <LinearLayout
         android:id="@+id/zoomControls"
-        android:orientation="vertical"
         android:layout_width="wrap_content"
         android:layout_height="wrap_content"
         android:layout_gravity="bottom|end"
-        android:layout_margin="16dp">
+        android:layout_margin="16dp"
+        android:orientation="vertical">
 
         <ImageButton
             android:id="@+id/zoomInButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
             android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_input_add"
-            android:contentDescription="Zoom In"/>
+            android:contentDescription="Zoom In"
+            android:src="@android:drawable/ic_input_add" />
 
         <ImageButton
             android:id="@+id/zoomOutButton"
             android:layout_width="48dp"
             android:layout_height="48dp"
+            android:layout_marginTop="8dp"
             android:background="@android:color/transparent"
-            android:src="@android:drawable/ic_delete"
             android:contentDescription="Zoom Out"
-            android:layout_marginTop="8dp"/>
+            android:src="@android:drawable/ic_delete" />
     </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/myLocationButton"
+        android:layout_width="48dp"
+        android:layout_height="48dp"
+        android:layout_gravity="bottom|start"
+        android:layout_margin="16dp"
+        android:background="@drawable/bg_button"
+        android:src="@android:drawable/ic_menu_mylocation" />
+
 
 </FrameLayout>
