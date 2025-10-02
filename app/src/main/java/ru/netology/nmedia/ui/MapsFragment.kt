@@ -3,7 +3,6 @@ package ru.netology.nmedia.ui
 import android.Manifest
 import android.annotation.SuppressLint
 import android.app.AlertDialog
-import android.content.Context
 import android.content.pm.PackageManager
 import android.os.Bundle
 import android.view.LayoutInflater
@@ -21,7 +20,6 @@ import com.google.android.material.button.MaterialButton
 import com.yandex.mapkit.Animation
 import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
-import com.yandex.mapkit.layers.ObjectEvent
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.InputListener
 import com.yandex.mapkit.map.Map
@@ -45,6 +43,8 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     private val markers = mutableListOf<MarkerPoint>()
     private lateinit var markersLayer: MapObjectCollection
     private val placemarks = mutableMapOf<Long, PlacemarkMapObject>()
+
+    private var pendingMarkerToFocus: MarkerPoint? = null
 
     private val mapInputListener = object : InputListener {
         override fun onMapTap(map: Map, point: Point) {
@@ -233,7 +233,7 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     }
 
     override fun onObjectRemoved(userLocationView: UserLocationView) {}
-    override fun onObjectUpdated(userLocationView: UserLocationView, objectEvent: ObjectEvent) {}
+    override fun onObjectUpdated(userLocationView: UserLocationView, objectEvent: com.yandex.mapkit.layers.ObjectEvent) {}
 
     override fun onStart() {
         super.onStart()
@@ -268,9 +268,13 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     }
 
     fun moveCameraToMarker(marker: MarkerPoint) {
+        if (!isAdded || view == null || !::mapView.isInitialized) {
+            pendingMarkerToFocus = marker
+            return
+        }
+
         mapView.post {
-            val placemark = placemarks[marker.id]
-            val target = placemark?.geometry ?: Point(marker.latitude, marker.longitude)
+            val target = Point(marker.latitude, marker.longitude)
             mapView.map.move(
                 CameraPosition(target, 16f, 0f, 0f),
                 Animation(Animation.Type.SMOOTH, 1f),
@@ -279,5 +283,11 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         }
     }
 
-
+    override fun onResume() {
+        super.onResume()
+        pendingMarkerToFocus?.let {
+            moveCameraToMarker(it)
+            pendingMarkerToFocus = null
+        }
+    }
 }

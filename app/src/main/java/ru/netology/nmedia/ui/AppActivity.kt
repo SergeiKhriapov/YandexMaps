@@ -16,6 +16,7 @@ class AppActivity : AppCompatActivity(R.layout.activity_app),
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        // Инициализация Yandex MapKit
         val apiKey = applicationContext.packageManager
             .getApplicationInfo(packageName, android.content.pm.PackageManager.GET_META_DATA)
             .metaData.getString("com.yandex.mapkit.API_KEY") ?: ""
@@ -40,11 +41,8 @@ class AppActivity : AppCompatActivity(R.layout.activity_app),
     }
 
     override fun onMarkerSelected(marker: MarkerPoint) {
+        // Возврат к карте
         supportFragmentManager.popBackStack()
-        mapFragment?.let { fragment ->
-            fragment.view?.post {
-                fragment.moveCameraToMarker(marker)
-            }
-        }
+        mapFragment?.moveCameraToMarker(marker)
     }
 }
