@@ -3,7 +3,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Кнопка возврата к карте -->
     <Button
         android:id="@+id/backToMapButton"
         android:layout_width="wrap_content"
@@ -17,7 +16,6 @@
         android:textColor="@android:color/white"
         android:textStyle="bold" />
 
-    <!-- RecyclerView для списка точек -->
     <androidx.recyclerview.widget.RecyclerView
         android:id="@+id/pointsRecyclerView"
         android:layout_width="match_parent"

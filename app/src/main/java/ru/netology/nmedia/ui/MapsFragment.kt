@@ -15,6 +15,7 @@ import android.widget.TextView
 import android.widget.Toast
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.core.content.ContextCompat
+import androidx.core.graphics.createBitmap
 import androidx.fragment.app.Fragment
 import com.google.android.material.button.MaterialButton
 import com.yandex.mapkit.Animation
@@ -22,7 +23,6 @@ import com.yandex.mapkit.MapKitFactory
 import com.yandex.mapkit.geometry.Point
 import com.yandex.mapkit.map.CameraPosition
 import com.yandex.mapkit.map.InputListener
-import com.yandex.mapkit.map.Map
 import com.yandex.mapkit.map.MapObjectCollection
 import com.yandex.mapkit.map.PlacemarkMapObject
 import com.yandex.mapkit.mapview.MapView
@@ -33,7 +33,6 @@ import com.yandex.runtime.image.ImageProvider
 import ru.netology.nmedia.R
 import ru.netology.nmedia.model.MarkerPoint
 import ru.netology.nmedia.storage.MarkerStorage
-import androidx.core.graphics.createBitmap
 
 class MapsFragment : Fragment(), UserLocationObjectListener {
 
@@ -45,17 +44,19 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
     private val placemarks = mutableMapOf<Long, PlacemarkMapObject>()
 
     private var pendingMarkerToFocus: MarkerPoint? = null
+    private var pendingMoveToUser = false
 
     private val mapInputListener = object : InputListener {
-        override fun onMapTap(map: Map, point: Point) {
+        override fun onMapTap(map: com.yandex.mapkit.map.Map, point: Point) {
             showAddMarkerDialog(point)
         }
-        override fun onMapLongTap(map: Map, point: Point) {}
+
+        override fun onMapLongTap(map: com.yandex.mapkit.map.Map, point: Point) {}
     }
 
     private val requestPermissionLauncher =
         registerForActivityResult(ActivityResultContracts.RequestPermission()) { isGranted ->
-            if (isGranted) enableUserLocation()
+            if (isGranted) initUserLocationLayer()
             else Toast.makeText(requireContext(), "Location permission denied", Toast.LENGTH_SHORT).show()
         }
 
@@ -64,7 +65,6 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
 
     override fun onViewCreated(view: View, savedInstanceState: Bundle?) {
         super.onViewCreated(view, savedInstanceState)
-
         mapView = view.findViewById(R.id.mapView)
 
         val zoomInButton: ImageButton = view.findViewById(R.id.zoomInButton)
@@ -96,8 +96,9 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
 
     private fun checkLocationPermission() {
         when {
-            ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION) == PackageManager.PERMISSION_GRANTED ->
-                enableUserLocation()
+            ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+                    == PackageManager.PERMISSION_GRANTED ->
+                initUserLocationLayer()
             shouldShowRequestPermissionRationale(Manifest.permission.ACCESS_FINE_LOCATION) ->
                 Toast.makeText(requireContext(), "Location permission needed", Toast.LENGTH_SHORT).show()
             else -> requestPermissionLauncher.launch(Manifest.permission.ACCESS_FINE_LOCATION)
@@ -209,27 +210,39 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
             View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED)
         )
         view.layout(0, 0, view.measuredWidth, view.measuredHeight)
-        val bitmap =
-            createBitmap(view.measuredWidth.coerceAtLeast(1), view.measuredHeight.coerceAtLeast(1))
+        val bitmap = createBitmap(view.measuredWidth.coerceAtLeast(1), view.measuredHeight.coerceAtLeast(1))
         val canvas = android.graphics.Canvas(bitmap)
         view.draw(canvas)
         return bitmap
     }
 
     @SuppressLint("MissingPermission")
-    private fun enableUserLocation() {
-        val mapKit = MapKitFactory.getInstance()
+    private fun initUserLocationLayer() {
         if (userLocationLayer == null) {
-            userLocationLayer = mapKit.createUserLocationLayer(mapView.mapWindow).apply {
-                isVisible = true
-                setObjectListener(this@MapsFragment)
-            }
+            userLocationLayer = MapKitFactory.getInstance()
+                .createUserLocationLayer(mapView.mapWindow)
+                .apply {
+                    isVisible = true
+                    setObjectListener(this@MapsFragment)
+                }
         }
     }
 
     override fun onObjectAdded(userLocationView: UserLocationView) {
         userLocationView.arrow.setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp))
         userLocationView.pin.setIcon(ImageProvider.fromResource(requireContext(), R.drawable.ic_netology_48dp))
+
+        if (pendingMoveToUser) {
+            val target = userLocationLayer?.cameraPosition()?.target
+            if (target != null) {
+                mapView.map.move(
+                    CameraPosition(target, 15f, 0f, 0f),
+                    Animation(Animation.Type.SMOOTH, 1f),
+                    null
+                )
+            }
+            pendingMoveToUser = false
+        }
     }
 
     override fun onObjectRemoved(userLocationView: UserLocationView) {}
@@ -240,6 +253,12 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
         MapKitFactory.getInstance().onStart()
         mapView.onStart()
         mapView.map.addInputListener(mapInputListener)
+
+        if (ContextCompat.checkSelfPermission(requireContext(), Manifest.permission.ACCESS_FINE_LOCATION)
+            == PackageManager.PERMISSION_GRANTED
+        ) {
+            initUserLocationLayer()
+        }
     }
 
     override fun onStop() {
@@ -259,11 +278,13 @@ class MapsFragment : Fragment(), UserLocationObjectListener {
                     Animation(Animation.Type.SMOOTH, 1f),
                     null
                 )
+                pendingMoveToUser = false
             } else {
-                Toast.makeText(requireContext(), "Location not ready yet", Toast.LENGTH_SHORT).show()
+                pendingMoveToUser = true
             }
         } else {
-            Toast.makeText(requireContext(), "User location layer not ready", Toast.LENGTH_SHORT).show()
+            pendingMoveToUser = true
+            initUserLocationLayer()
         }
     }
 

@@ -4,7 +4,6 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <!-- Карта -->
     <com.yandex.mapkit.mapview.MapView
         android:id="@+id/mapView"
         android:layout_width="match_parent"
@@ -24,7 +23,6 @@
         android:text="Мои точки"
         android:textColor="@android:color/white"
         android:textStyle="bold" />
-    <!-- Контейнер для кнопок масштабирования -->
 
     <LinearLayout
         android:id="@+id/zoomControls"
@@ -52,7 +50,6 @@
             android:src="@android:drawable/ic_delete" />
     </LinearLayout>
 
-    <!-- Кнопка геолокации -->
     <ImageButton
         android:id="@+id/myLocationButton"
         android:layout_width="48dp"
